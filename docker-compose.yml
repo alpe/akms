@@ -1,0 +1,81 @@
+version: '3'
+
+services:
+  node-1:
+    environment:
+      NODE_ID: node_1
+    image: alpetest/akms:manual
+    ports:
+      - 8081:8080
+      - 8088
+    expose:
+      - 8081
+    command:
+      - '--chain-id=test-chain'
+      - '--file-path=/config/priv_validator.json'
+      - '--server-port=8080'
+      - '--snapshot-dir=/data'
+      - '--raft-port=8088'
+      - '--raft-peers=node_1@node-1:8088,node_2@node-2:8088,node_3@node-3:8088'
+    volumes:
+      - ./priv_validator.json:/config/priv_validator.json
+      - akms_data_1:/data
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.11
+  node-2:
+    environment:
+      NODE_ID: node_2
+    image: alpetest/akms:manual
+    ports:
+      - 8082:8080
+      - 8088
+    expose:
+      - 8082
+    command:
+      - '--chain-id=test-chain'
+      - '--file-path=/config/priv_validator.json'
+      - '--server-port=8080'
+      - '--snapshot-dir=/data'
+      - '--raft-port=8088'
+      - '--raft-peers=node_1@node-1:8088,node_2@node-2:8088,node_3@node-3:8088'
+    volumes:
+      - ./priv_validator.json:/config/priv_validator.json
+      - akms_data_2:/data
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.12
+  node-3:
+    environment:
+      NODE_ID: node_3
+    image: alpetest/akms:manual
+    ports:
+      - 8083:8080
+      - 8088
+    expose:
+      - 8083
+    command:
+      - '--chain-id=test-chain'
+      - '--file-path=/config/priv_validator.json'
+      - '--server-port=8080'
+      - '--snapshot-dir=/data'
+      - '--raft-port=8088'
+      - '--raft-peers=node_1@node-1:8088,node_2@node-2:8088,node_3@node-3:8088'
+    volumes:
+      - ./priv_validator.json:/config/priv_validator.json
+      - akms_data_3:/data
+    networks:
+      app_net:
+        ipv4_address: 172.16.238.13
+volumes:
+  akms_data_1: {}
+  akms_data_2: {}
+  akms_data_3: {}
+
+networks:
+  app_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.238.0/24
