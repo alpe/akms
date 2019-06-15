@@ -90,3 +90,6 @@ curl -s 'localhost:26657/abci_query?data="abcd"'
 
 ```
 See https://tendermint.com/docs/introduction/quick-start.html#local-node
+
+## Disclaimer
+The `RaftStore` is very much inspired by https://github.com/otoolep/hraftd and contains code copied from this project.
