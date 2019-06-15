@@ -48,36 +48,40 @@ go test  -bench=. ./cmd/akms  -tags=integration
 ```bash
 docker-compose up
 ```
-* Find leader
+* Find leader (hack until loadbalancer is added to docker-compose)
 ```
 curl -v  127.0.0.1:808{1,2,3}/sign/ready
 ```
-* Start proxy
-```
-go run ./cmd/akmsproxy/main.go  --chain-id=akms-example -socket-addr=unix://./tmp/akms-proxy.sock -server-addr=http://127.0.0.1:8082
-```
-* Start tendermint
+The call that returns `200` 
+
+* Prepare tendermint
 ```bash
-
-
-# start tendermint
 tendermint init --home=$(pwd)/tmp
+
 # replace chain_id in genesis
 cat ./tmp/config/genesis.json | jq '.chain_id = "akms-example" | .validators[0].address="6AC7BA59D2B177FE1B73AD21E5EE1DE446A4DE21" | .validators[0].pub_key.value = "smAHzSepeo7g5jAFt5GudpW7fHxBdkZTRmZ/K+54xx0="' > ./tmp/config/genesis.json_new
 rm -f ./tmp/config/genesis.json
 mv ./tmp/config/genesis.json_new ./tmp/config/genesis.json
 
 # set socket in config.toml (OSX)
- 
-sed -i '' "/^\s*priv_validator_laddr /s/=.*$/= \"unix:\/\/.\/tmp\/akms-proxy.sock\"/" ./tmp/config/config.toml
+ sed -i '' "/^\s*priv_validator_laddr /s/=.*$/= \"unix:\/\/.\/tmp\/akms-proxy.sock\"/" ./tmp/config/config.toml
+```
 
+* Start proxy
+
+```bash
+go run ./cmd/akmsproxy/main.go  --chain-id=akms-example -socket-addr=unix://./tmp/akms-proxy.sock -server-addr=http://127.0.0.1:8082
+```
+
+* Start tendermint
+
+```bash
 # start tendermit
 tendermint node --proxy_app=kvstore --home=$(pwd)/tmp
+```
+* Test with some calls
 
-# start in new window akms local proxy process
-
-go run ./cmd/akmsproxy/main.go  --chain-id=akms-example -socket-addr=unix://./tmp/akms-proxy.sock -server-addr=http://127.0.0.1:8083
-
+```bash
 # send some data
 curl -s 'localhost:26657/broadcast_tx_commit?tx="abcd"'
 
