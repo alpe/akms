@@ -18,12 +18,14 @@ Server side KMS
 Local proxy process as bridge between Tendermint and akms cluster
 
 
-## To do
-- [ ] Add load balancer to compose setup to route to RAFT master only]
-- [ ] Add k8s example
+## Early version
+- [ ] Fix issue *BUG* with proxy retry when raft master changes
+- [ ] Improve timeout, logging,  
+- [ ] Add load balancer to compose setup to route to RAFT master only
 - [ ] Better docs
 - [ ] Metrics
-- [ ] Address security concerns with keys on the file system  
+- [ ] Address security concerns with keys on the file system
+  
 - ...
 
 ## Build Artifacts

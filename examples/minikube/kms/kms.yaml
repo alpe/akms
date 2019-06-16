@@ -1,0 +1,175 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: kms
+spec:
+  selector:
+    matchLabels:
+      app: kms
+  minAvailable: 1
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: kms
+  labels:
+    app: kms
+    component: core
+spec:
+  serviceName: kmsx
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: Parallel
+  template:
+    metadata:
+      labels:
+        app: kms
+        component: core
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: kms
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+      affinity:
+#        podAntiAffinity:
+#          requiredDuringSchedulingIgnoredDuringExecution:
+#            - labelSelector:
+#                matchExpressions:
+#                  - key: app
+#                    operator: In
+#                    values: [tm-a, gaia-b, gaia-c, kms]
+#              topologyKey: kubernetes.io/hostname
+#        podAffinity:
+#          preferredDuringSchedulingIgnoredDuringExecution:
+#            - weight: 100
+#              podAffinityTerm:
+#                labelSelector:
+#                  matchExpressions:
+#                    - key: app
+#                      operator: In
+#                      values: [gaia-a, gaia-b]
+#                topologyKey: failure-domain.beta.kubernetes.io/zone
+      containers:
+        - name: kms
+          image: alpetest/akms:manual
+#          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
+          env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          args:
+            - --chain-id=akms-example
+            - --server-port=8080
+            - --file-path=/work/priv_validator.json
+            - --snapshot-dir=/data
+            - --raft-port=8088
+            - --raft-peers=kms-0@kms-0.kmsx.default.svc.cluster.local:8088,kms-1@kms-1.kmsx.default.svc.cluster.local:8088,kms-2@kms-2.kmsx.default.svc.cluster.local:8088
+          ports:
+            - name: api
+              containerPort: 8080
+              protocol: TCP
+            - name: raft
+              containerPort: 8088
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 40m
+              memory: 32Mi
+          volumeMounts:
+            - mountPath: /work/priv_validator.json.orig
+              name: sign-keys
+              subPath: priv_validator.json
+              readOnly: true
+            - mountPath: /work
+              name: kms-storage-volume
+            - mountPath: /data
+              name: kms-snapshot-volume
+          securityContext:
+            readOnlyRootFilesystem: true
+          readinessProbe:
+            httpGet:
+              path: /sign/ready
+              port: api
+            initialDelaySeconds: 1
+            timeoutSeconds: 1
+            failureThreshold: 1
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: api
+            initialDelaySeconds: 2
+            timeoutSeconds: 1
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - name: sign-keys
+        secret:
+          secretName: kms-sign-key
+          defaultMode: 0400
+  volumeClaimTemplates:
+    - metadata:
+        name: kms-storage-volume
+      spec:
+        accessModes:
+          - ReadWriteOnce
+#        storageClassName: fast
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 1Gi
+    - metadata:
+        name: kms-snapshot-volume
+      spec:
+        accessModes:
+          - ReadWriteOnce
+#        storageClassName: fast
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kmsx
+  labels:
+    app: kms
+    component: headless
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  clusterIP: None
+  ports:
+    - port: 8080
+      name: api
+  selector:
+    app: kms
+    component: core
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kms
+  labels:
+    app: kms
+    component: core
+spec:
+  ports:
+    - port: 8080
+      name: api
+  selector:
+    app: kms
+    component: core

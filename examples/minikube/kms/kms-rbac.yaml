@@ -1,0 +1,53 @@
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kms
+rules:
+  - apiGroups:
+      - "" # "" indicates the core API group
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+    - "" # "" indicates the core API group
+    resources:
+    - services
+    verbs:
+    - get
+    - list
+    - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: kms
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kms
+subjects:
+- kind: ServiceAccount
+  name: kms
+  namespace: default
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kms
+  namespace: default
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kms
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: unpriviledged
+subjects:
+  - kind: ServiceAccount
+    name: kms
+    namespace: default

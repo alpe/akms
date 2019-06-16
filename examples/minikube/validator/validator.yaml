@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: validator-a
+  labels:
+    app: validator-a
+    component: validator
+spec:
+  ports:
+  - port: 26656
+    name: p2p
+  - port: 26657
+    name: rpc
+  selector:
+    app: validator-a
+    component: validator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: validator-a-rpc
+  labels:
+    app: validator-a
+    component: validator
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 26657
+    name: rpc
+  selector:
+    app: validator-a
+    component: validator
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: validator-a
+  labels:
+    app: validator-a
+    component: validator
+spec:
+  serviceName: validator-a
+  replicas: 1
+  selector:
+    matchLabels:
+      app: validator-a
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: Parallel
+  template:
+    metadata:
+      labels:
+        app: validator-a
+        component: validator
+        clusterName: akms-example
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: validator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 2000
+        fsGroup: 2000
+      affinity:
+#        podAntiAffinity:
+#          requiredDuringSchedulingIgnoredDuringExecution:
+#          - labelSelector:
+#              matchExpressions:
+#              - key: app
+#                operator: In
+#                values: [validator-a]
+#            topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 10
+      initContainers:
+        - name: init
+          imagePullPolicy: IfNotPresent
+          image: iov1/tendermint:v0.31.5  
+          env:
+            - name: TMHOME
+              value: /kv-app
+          command:
+            - bash
+            - "-c"
+          args:
+            - |
+              set -exo pipefail
+
+              if [ ! -f ${TMHOME}/.kv-app/config/genesis.json ]; then
+                # start fresh
+                tendermint init --home=${TMHOME}/.kv-app
+                # set chain-id and validator key in genesis
+                cat $TMHOME/.kv-app/config/genesis.json | jq '.chain_id = "akms-example" | .validators[0].address="6AC7BA59D2B177FE1B73AD21E5EE1DE446A4DE21" | .validators[0].pub_key.value = "smAHzSepeo7g5jAFt5GudpW7fHxBdkZTRmZ/K+54xx0="' > $TMHOME/.kv-app/config/genesis.json_new
+                rm -f $TMHOME/.kv-app/config/genesis.json
+                mv $TMHOME/.kv-app/config/genesis.json_new $TMHOME/.kv-app/config/genesis.json
+
+                chmod 0400 ${TMHOME}/.kv-app/config/genesis.json
+
+                # dummy file to not fail on boot
+                echo '{"height":"0","round":"0","step":0}' > /kv-app/.kv-app/config/priv_validator_state.json
+              fi
+
+              echo "done"
+          volumeMounts:
+            - mountPath: /kv-app/.kv-app/config
+              name: config-dir
+            - mountPath: /kv-app/.kv-app/data
+              name: data
+            - mountPath: /socks
+              name: kms-socket-dir
+          resources:
+            limits:
+              cpu: 150m
+              memory: 150Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+      containers:
+        - name: akms-proxy
+          #          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
+          image: alpetest/akmsproxy:manual
+          command:
+            - '/akmsproxy'
+          args:
+            - --chain-id=akms-example
+            - --socket-addr=unix:///socks/akms.sock
+            - --server-addr=http://kms.default.svc.cluster.local:8080
+            - --wait-timeout=400ms
+          #            - --sign-timeout=2500ms
+          securityContext:
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            limits:
+              cpu: 10m
+              memory: 24Mi
+            requests:
+              cpu: 4m
+              memory: 16Mi
+          volumeMounts:
+            - mountPath: /socks
+              name: kms-socket-dir
+        - name: abci-app
+          imagePullPolicy: IfNotPresent
+          image: iov1/tendermint:v0.31.5  
+          ports:
+          - containerPort: 26656
+            name: p2p
+          - containerPort: 26657
+            name: rpc
+          - containerPort: 26658
+            name: kms
+          command:
+            - bash
+            - "-c"
+          args:
+            - |
+              set -exo pipefail
+              # cleanup any remaining socket file
+              rm -f /socks/akms.sock
+
+              # start app
+              exec tendermint node \
+                  --moniker=validator-1 \
+                  --proxy_app=kvstore \
+                  --priv_validator_laddr=unix:///socks/akms.sock \
+                  --home=/kv-app/.kv-app/ \
+                  --log_level=main:info,state:info,consensus:debug,privval:info,*:error
+
+          volumeMounts:
+          - mountPath: /kv-app/.kv-app/config
+            name: config-dir
+            readOnly: true
+          - mountPath: /kv-app/.kv-app/data
+            name: data
+          - mountPath: /socks
+            name: kms-socket-dir
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: 1900m
+              memory: 2Gi
+            requests:
+              cpu: 1100m
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command:
+              - sh
+              - -o
+              - pipefail
+              - -ec
+              - 'curl -s --fail http://localhost:26657/status | jq --exit-status ".result.sync_info.catching_up==false"'
+            failureThreshold: 3
+            periodSeconds: 20
+            initialDelaySeconds: 40
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - -o
+              - pipefail
+              - -ec
+              - 'curl -s --fail http://localhost:26657/abci_info | jq --exit-status ".result.response"'
+            failureThreshold: 300000
+            initialDelaySeconds: 40
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 2
+      volumes:
+      - name: kms-socket-dir
+        emptyDir: {}
+      - name: config-dir
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 3Gi

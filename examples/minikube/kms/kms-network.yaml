@@ -1,0 +1,33 @@
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: kms-allow
+  labels:
+    app: kms
+    component: core
+spec:
+  podSelector:
+    matchLabels:
+      app: kms
+      component: core
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 8080
+    from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+          component: core
+    - podSelector:
+        matchLabels:
+          component: validator
+          clusterName: akms-example
+  - ports:
+    - port: 8088
+    from:
+    - podSelector:
+        matchLabels:
+          app: kms
+          component: core
