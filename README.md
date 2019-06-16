@@ -5,17 +5,18 @@ Implements the [tendermint local file kms](https://github.com/tendermint/tenderm
 
 This is based on my initial version that I had used with "Validatorich" during Game of Stake for
 an active active validator setup in a k8s cluster.
+
 A 3 node akms cluster was used to sync the validators and prevent double signing.
 A k8s ingress with health checks on `/sign/ready` routed requests to the RAFT master only.
  
 
 ## Components
 
-* Akms
-Server side KMS
+#### Akms
+Server side KMS that runs in a cluster.
 
-* Akms proxy
-Local proxy process as bridge between Tendermint and akms cluster
+### Akms proxy
+Local proxy process as bridge between Tendermint and akms cluster. Runs on same box with unix socket connetion.
 
 
 ## Early version
